@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>工單分配系統</title>
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+</head>
+<body>
+
+  <!-- ══════════════════════════════════════════════
+       🔒 PASSWORD GATE UI
+       ══════════════════════════════════════════════ -->
+  <div id="gate">
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;600;700;800&display=swap');
+      #gate {
+        position: fixed; inset: 0; z-index: 9999;
+        display: flex; align-items: center; justify-content: center;
+        background: linear-gradient(135deg, #0a0f1e 0%, #0f172a 50%, #1e3a5f 100%);
+        font-family: 'Noto Sans TC', -apple-system, sans-serif;
+      }
+      #gate-box {
+        background: rgba(255,255,255,0.05);
+        border: 1px solid rgba(255,255,255,0.12);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        border-radius: 20px;
+        padding: 44px 40px;
+        width: 100%;
+        max-width: 400px;
+        box-shadow: 0 32px 64px rgba(0,0,0,0.5);
+        text-align: center;
+        box-sizing: border-box;
+      }
+      #gate-logo { font-size: 40px; margin-bottom: 8px; }
+      #gate-title {
+        color: #fff;
+        font-size: 20px;
+        font-weight: 800;
+        margin: 0 0 4px;
+        letter-spacing: -0.3px;
+      }
+      #gate-subtitle {
+        color: rgba(255,255,255,0.4);
+        font-size: 12px;
+        margin: 0 0 32px;
+      }
+      #gate-label {
+        color: rgba(255,255,255,0.55);
+        font-size: 11px;
+        font-weight: 600;
+        text-align: left;
+        display: block;
+        margin-bottom: 7px;
+        letter-spacing: 0.8px;
+        text-transform: uppercase;
+      }
+      #pw-input {
+        width: 100%;
+        padding: 13px 16px;
+        border-radius: 10px;
+        border: 1px solid rgba(255,255,255,0.15);
+        background: rgba(255,255,255,0.07);
+        color: #fff;
+        font-size: 16px;
+        font-weight: 600;
+        outline: none;
+        box-sizing: border-box;
+        letter-spacing: 3px;
+        transition: border-color 0.2s, box-shadow 0.2s;
+        margin-bottom: 14px;
+      }
+      #pw-input::placeholder { color: rgba(255,255,255,0.2); letter-spacing: 0; font-size: 13px; }
+      #pw-input:focus {
+        border-color: rgba(59,130,246,0.7);
+        box-shadow: 0 0 0 3px rgba(59,130,246,0.2);
+      }
+      #pw-input.error {
+        border-color: rgba(239,68,68,0.8) !important;
+        box-shadow: 0 0 0 3px rgba(239,68,68,0.2) !important;
+        animation: gate-shake 0.35s ease;
+      }
+      @keyframes gate-shake {
+        0%,100%{transform:translateX(0)}
+        25%{transform:translateX(-7px)}
+        75%{transform:translateX(7px)}
+      }
+      #pw-btn {
+        width: 100%;
+        padding: 13px;
+        border-radius: 10px;
+        border: none;
+        background: linear-gradient(135deg, #2563eb, #1e40af);
+        color: #fff;
+        font-size: 14px;
+        font-weight: 700;
+        cursor: pointer;
+        transition: all 0.2s;
+        box-shadow: 0 4px 14px rgba(37,99,235,0.4);
+        letter-spacing: 0.3px;
+        font-family: 'Noto Sans TC', -apple-system, sans-serif;
+      }
+      #pw-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(37,99,235,0.5); }
+      #pw-btn:active { transform: translateY(0); }
+      #pw-error {
+        color: #fca5a5;
+        font-size: 12px;
+        font-weight: 600;
+        margin-top: 10px;
+        min-height: 18px;
+      }
+      #gate-footer {
+        color: rgba(255,255,255,0.18);
+        font-size: 10.5px;
+        margin-top: 28px;
+      }
+    </style>
+
+    <div id="gate-box">
+      <div id="gate-logo">📋</div>
+      <h1 id="gate-title">工單分配系統</h1>
+      <p id="gate-subtitle">請輸入密碼以繼續 &nbsp;&middot;&nbsp; Internal Use Only</p>
+
+      <label id="gate-label" for="pw-input">Access Password</label>
+      <input
+        id="pw-input"
+        type="password"
+        placeholder="輸入工作區密碼"
+        autocomplete="current-password"
+      />
+      <button id="pw-btn" onclick="gateSubmit()">🔓 &nbsp;進入系統</button>
+      <div id="pw-error"></div>
+      <div id="gate-footer">&copy; Wuhe Content Team &nbsp;&middot;&nbsp; 僅限內部使用</div>
+    </div>
+  </div>
+
+  <!-- React App（密碼驗證後才顯示） -->
+  <div id="root" style="display:none"></div>
+
+  <!-- ══════════════════════════════════════════════
+       🔒 PASSWORD GATE LOGIC
+       ▶ 修改密碼：把 SITE_PASSWORD 改成你要的密碼即可
+       ══════════════════════════════════════════════ -->
+  <script>
+    var SITE_PASSWORD = 'woa2026';   // ◄══ 修改密碼在這裡
+    var AUTH_KEY = 'woa_auth_v1';    // sessionStorage key
+
+    /* 頁面載入時：若已驗證（同一个分頁內），就直接繼續 */
+    (function checkAuth() {
+      if (sessionStorage.getItem(AUTH_KEY) === '1') {
+        document.getElementById('gate').style.display = 'none';
+        document.getElementById('root').style.display = '';
+      } else {
+        /* 待完全載入後再與 input focus */
+        window.addEventListener('DOMContentLoaded', function() {
+          document.getElementById('pw-input').focus();
+        });
+      }
+    })();
+
+    /* Enter 鍵提交 */
+    document.addEventListener('DOMContentLoaded', function() {
+      document.getElementById('pw-input').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') gateSubmit();
+      });
+    });
+
+    function gateSubmit() {
+      var input  = document.getElementById('pw-input');
+      var errEl  = document.getElementById('pw-error');
+      var val    = input.value; // 密碼不做 trim，區分大小寫
+
+      if (val === SITE_PASSWORD) {
+        /* ✅ 驗證成功 */
+        sessionStorage.setItem(AUTH_KEY, '1');
+        document.getElementById('gate').style.display = 'none';
+        document.getElementById('root').style.display = '';
+      } else {
+        /* ❌ 驗證失敗 */
+        errEl.textContent = '⚠️ 密碼錯誤，請再試一次';
+        input.classList.add('error');
+        input.value = '';
+        setTimeout(function() {
+          input.classList.remove('error');
+          errEl.textContent = '';
+          input.focus();
+        }, 1800);
+      }
+    }
+  </script>
+
+  <script type="text/babel">
+    const { useState, useCallback, useMemo, useRef } = React;
+
+    /* ═══════════════════════════════════════════════════════════════════════════
+       CONSTANTS (預設值，可透過 localStorage 覆蓋)
+       ═══════════════════════════════════════════════════════════════════════════ */
+    const TASK_HOURS={"撰寫SEO文章":5,"擬文案大綱 (SEO)":5,"PBN 文案":5,"優化文章":1.5,"GMB 評論文案":1.5,"原稿 On Page SEO":1.5,"編輯審稿":1};
+    const INT_ONLY=["擬文案大綱 (SEO)","PBN 文案","優化文章","GMB 評論文案"];
+
+    // 預設寫手名單
+    const WP_DEFAULT=["Sophia","YuTing","Lumi","包子","David","Jack","錡緯","青芳","銘賢","欣怡","Rita","玟伶","Loui","Taco","Liz"];
+    // 預設篇數上限
+    const WMD={Sophia:2,YuTing:2,Lumi:2,"包子":1,David:1,Jack:1,"錡緯":1,"青芳":1,"銘賢":2,"欣怡":1,Rita:1,"玟伶":1,Loui:1,Taco:1,Liz:1};
+
+    // 預設寫手專長
+    const WS_DEFAULT={Sophia:["生活風格","美容美體","醫療健康","寵物照護","教育學習","科技資訊","金融商管"],YuTing:["生活風格","美容美體","醫療健康","寵物照護","教育學習","科技資訊","金融商管"],Lumi:["寵物照護","教育學習","能源與環境"],"包子":["美容美體","寵物照護","生活風格"],David:["生活風格","醫療健康","寵物照護","科技資訊","能源與環境"],Jack:["生活風格","醫療健康","寵物照護","科技資訊","能源與環境"],"錡緯":["美容美體","醫療健康","寵物照護","其他"],"青芳":["生活風格","美容美體","教育學習"],"銘賢":["生活風格","美容美體","寵物照護","其他"],"欣怡":["生活風格","寵物照護"],Rita:["美容美體","醫療健康"],"玟伶":["生活風格"],Loui:["醫療健康"],Taco:["醫療健康"],Liz:["科技資訊","金融商管","教育學習","能源與環境"]};
+
+    // 預設優先專案
+    const INIT_PREF={
+      Sophia:["德風健康館","百喬生醫","營養師輕食","勝昌製藥","杉與橙","信義房屋","優渥實木","Order歐德","美地居家","愛加沙發","大雄設計","ESGTimes","TEJ台灣新報","FINDIT","KPMG安侯建業","中國生產力","十方廣華","MACUS","新創圓夢網","愛吾寶"],
+      YuTing:["SUM汽車網","簽證通","Amazon","佳樂電子","新漢","精誠資訊","蒼松科技","世達先進","ONETOUCH","傳旭科技","TP-link","Afatec"],
+      Lumi:["可沛寵藥","永鴻生技","牧騰生技","寵特寶","樂泓","萌醫生","龐龐毛小孩","琪欣動物醫院","Amazon","佳樂電子","新漢","精誠資訊","蒼松科技","世達先進","ONETOUCH","傳旭科技","TP-link","Afatec"],
+      "包子":["TACIT","台灣TMS","正欣診所","成柏診所","首盛診所","呼吸優","儷寶得","越診所","iSKIN","尚行美","漫雲思境","蒔現美","得利購","日力能源"],
+      David:["SUM汽車網","佳樂電子","新漢","精誠資訊","蒼松科技","世達先進","ONETOUCH","傳旭科技","TP-link","Afatec","全家安"],
+      Jack:["SUM汽車網","佳樂電子","新漢","精誠資訊","蒼松科技","世達先進","ONETOUCH","傳旭科技","TP-link","Afatec","全家安"],
+      "錡緯":["蒔美牙醫","循映牙醫","硬像創意","呼吸優"],
+      "青芳":["儷寶得","越診所","iSKIN","尚行美","漫雲思境","蒔現美","璞蘊","寰宇迪士尼美語","GoEducation","仁育","Winning","新絲路"],
+      "銘賢":["湛盧咖啡","采定","ANDEN HUD","derma angel","靚陽","imeime","OROOBO","楽玩多","發票怪獸","明道齋"],
+      "欣怡":[],"Rita":[],"玟伶":[],"Loui":[],"Taco":[],
+      Liz:["ESGTimes","TEJ台灣新報","FINDIT","KPMG安侯建業","十方廣華","MACUS","新創圓夢網"],
+    };
+
+    const PI={"蒔美牙醫":"醫療健康","循映牙醫":"醫療健康","TACIT":"醫療健康","台灣TMS":"醫療健康","正欣診所":"醫療健康","成柏診所":"醫療健康","首盛診所":"醫療健康","呼吸優":"醫療健康","儷寶得":"醫療健康","越診所":"醫療健康","iSKIN":"醫療健康","漫雲思境":"醫療健康","蒔現美":"醫療健康","璞蘊":"醫療健康","德風健康館":"醫療健康","百喬生醫":"醫療健康","營養師輕食":"醫療健康","勝昌製藥":"醫療健康","杉與橙":"醫療健康","可沛寵藥":"寵物照護","寵特寶":"寵物照護","萌醫生":"寵物照護","樂泓":"寵物照護","龐龐毛小孩":"寵物照護","琪欣動物醫院":"寵物照護","信義房屋":"生活風格","優渥實木":"生活風格","Order":"生活風格","美地居家":"生活風格","愛加沙發":"生活風格","大雄設計":"生活風格","Amazon":"科技資訊","佳樂電子":"科技資訊","新漢":"科技資訊","精誠資訊":"科技資訊","蒼松科技":"科技資訊","世達先進":"科技資訊","ONETOUCH":"科技資訊","TP-link":"科技資訊","Afatec":"科技資訊","ESGTimes":"金融商管","TEJ":"金融商管","FINDIT":"金融商管","KPMG":"金融商管","中國生產力":"金融商管","十方廣華":"金融商管","MACUS":"金融商管","Macus":"金融商管","新創圓夢網":"金融商管","林明忠":"金融商管","湛盧咖啡":"生活風格","得利購":"生活風格","全家安":"生活風格","采定":"美容美體","ANDEN HUD":"美容美體","derma angel":"美容美體","imeime":"美容美體","Arowana":"生活風格","OROOBO":"生活風格","楽玩多":"生活風格","愛吾寶":"生活風格","發票怪獸":"生活風格","寰宇迪士尼美語":"教育學習","GoEducation":"教育學習","Winning":"教育學習","新絲路":"教育學習","日力能源":"能源與環境","明道齋":"其他","硬像創意":"其他","SUM":"其他","簽證通":"其他"};
+    const IC={"生活風格":"#f0abfc","美容美體":"#fda4af","醫療健康":"#86efac","寵物照護":"#fcd34d","教育學習":"#93c5fd","科技資訊":"#a5b4fc","金融商管":"#fbbf24","能源與環境":"#6ee7b7","其他":"#d1d5db"};
+    const ALL_IND=Object.keys(IC);
+    const PIG={};Object.entries(PI).forEach(([p,i])=>{if(!PIG[i])PIG[i]=[];PIG[i].push(p);});
+
+    /* ═══ LocalStorage helpers ═══ */
+    const LS_WRITERS='woa_writers';
+    const LS_SPEC='woa_writer_specs';
+    const LS_PREF='woa_pref_map';
+    const LS_WMAX='woa_writer_max';
+    function lsLoad(key,def){try{const v=localStorage.getItem(key);return v?JSON.parse(v):JSON.parse(JSON.stringify(def));}catch{return JSON.parse(JSON.stringify(def));}}
+    function lsSave(key,val){try{localStorage.setItem(key,JSON.stringify(val));}catch{}}
+
+    /* ═══ Helpers ═══ */
+    function mI(pn){if(!pn)return"其他";const s=String(pn);for(const k of Object.keys(PI).sort((a,b)=>b.length-a.length)){if(s.toLowerCase().includes(k.toLowerCase()))return PI[k];}return"其他";}
+    function mE(pn,m){if(!pn||!m)return null;const s=String(pn);for(const k of Object.keys(m).sort((a,b)=>b.length-a.length)){if(s.includes(k))return m[k];}return null;}
+    function cH(os,n){let w=0,r=0;os.forEach(o=>{if(o.assignee===n)w+=(TASK_HOURS[o.type]||0);if((o.reviewer||"").replace(/（代審）/g,"").trim()===n)r+=1;});return{write:w,review:r,total:w+r};}
+    function cWU(os,n){return os.filter(o=>o.assignee===n&&o.role==="外稿寫手").length;}
+    function hasPrefMatch(writer,projectFullName,prefMap){if(!projectFullName||!prefMap[writer])return false;const s=String(projectFullName).toLowerCase();return prefMap[writer].some(p=>s.includes(p.toLowerCase()));}
+
+    /* ═══ ALLOCATION ENGINE ═══ */
+    function runAlloc(raw,edMap,edCfg,wMax,wSpec,wPri,prefMap,onLeave){
+      const leave=onLeave||new Set();
+      const eds={};Object.entries(edCfg).forEach(([k,v])=>{eds[k]={...v,rem:v.totalHours};});
+      const wr={};wPri.forEach(w=>{wr[w]=leave.has(w)?0:(wMax[w]||0);});
+      const res=[];
+
+      raw.filter(t=>t.assignee).forEach(t=>{
+        const hrs=TASK_HOURS[t.type]||0;const en=Object.keys(eds).find(e=>t.assignee.includes(e));
+        if(en)eds[en].rem-=hrs;
+        res.push({...t,assignee:en||t.assignee,role:"內部編輯",reviewer:"-",locked:INT_ONLY.includes(t.type)||t.type==="GMB 評論文案",note:t.type==="GMB 評論文案"?"僅限 Krystina":"已手動指派",matchTier:"-"});
+      });
+
+      const typeOrd={"GMB 評論文案":0,"優化文章":1,"擬文案大綱 (SEO)":2,"PBN 文案":3,"原稿 On Page SEO":4,"撰寫SEO文章":5};
+      const sorted=[...raw.filter(t=>!t.assignee)].sort((a,b)=>(typeOrd[a.type]??9)-(typeOrd[b.type]??9));
+      const seoTasks=sorted.filter(t=>t.type==="撰寫SEO文章");
+      const nonSeo=sorted.filter(t=>t.type!=="撰寫SEO文章");
+
+      nonSeo.forEach(t=>{
+        const hrs=TASK_HOURS[t.type]||0;const ind=mI(t.project);const rEd=mE(t.project,edMap);
+        const intOnly=INT_ONLY.includes(t.type);let done=false;
+        if(t.type==="GMB 評論文案"&&eds.Krystina&&eds.Krystina.rem>=hrs){eds.Krystina.rem-=hrs;res.push({...t,assignee:"Krystina",role:"內部編輯",reviewer:"-",locked:true,note:"僅限 Krystina",industry:ind,matchTier:"-"});done=true;}
+        if(!done){for(const ed of Object.keys(eds).sort((a,b)=>eds[b].rem-eds[a].rem)){if(eds[ed].rem>=hrs){eds[ed].rem-=hrs;res.push({...t,assignee:ed,role:"內部編輯",reviewer:"-",locked:intOnly,note:"內部編輯撰寫",industry:ind,matchTier:"-"});done=true;break;}}}
+        if(!done&&!intOnly&&t.type==="原稿 On Page SEO"){
+          // 從 wPri 找前兩位可用寫手
+          const onPageCands=wPri.filter(w=>!leave.has(w)&&res.filter(r=>r.assignee===w&&r.type==="原稿 On Page SEO").length<1);
+          if(onPageCands.length>0){const w=onPageCands[0];const rv=rEd||Object.keys(eds)[0];if(eds[rv])eds[rv].rem-=1;res.push({...t,assignee:w,role:"外稿寫手",reviewer:rv,locked:false,note:"外稿（On Page）",industry:ind,matchTier:"—"});done=true;}
+        }
+        if(!done)res.push({...t,assignee:"⚠️ 未分配",role:"-",reviewer:"-",locked:false,note:"無可用人員",industry:mI(t.project),matchTier:"-"});
+      });
+
+      const totalSeo=seoTasks.length;let bestInt=0;
+      for(let tryI=Math.min(totalSeo,4);tryI>=0;tryI--){
+        const simEds={};Object.keys(eds).forEach(e=>{simEds[e]=eds[e].rem;});
+        let ok=true;
+        for(let i=0;i<tryI;i++){const edO=Object.keys(simEds).sort((a,b)=>simEds[b]-simEds[a]);let p=false;for(const e of edO){if(simEds[e]>=5){simEds[e]-=5;p=true;break;}}if(!p){ok=false;break;}}
+        if(!ok)continue;
+        const revPer={};Object.keys(eds).forEach(e=>{revPer[e]=0;});
+        res.forEach(o=>{const rv=(o.reviewer||"").replace(/（代審）/g,"").trim();if(rv&&revPer[rv]!==undefined)revPer[rv]++;});
+        seoTasks.slice(tryI).forEach(t=>{const re=mE(t.project,edMap)||Object.keys(eds)[0];revPer[re]=(revPer[re]||0)+1;});
+        const eN=Object.keys(eds);
+        if(eN.length===2){const[a,b]=eN;let rA=revPer[a]||0,rB=revPer[b]||0,wA=edCfg[a].totalHours-simEds[a],wB=edCfg[b].totalHours-simEds[b],s=15;
+          while(s-->0&&(wA+rA>edCfg[a].totalHours)&&(wB+rB<edCfg[b].totalHours)){rA--;rB++;}
+          while(s-->0&&(wB+rB>edCfg[b].totalHours)&&(wA+rA<edCfg[a].totalHours)){rB--;rA++;}
+          if(wA+rA<=edCfg[a].totalHours&&wB+rB<=edCfg[b].totalHours){bestInt=tryI;break;}}
+        else{let allOk=true;Object.keys(eds).forEach(e=>{if((edCfg[e].totalHours-simEds[e])+(revPer[e]||0)>edCfg[e].totalHours)allOk=false;});if(allOk){bestInt=tryI;break;}}
+      }
+
+      const intSeo=seoTasks.slice(0,bestInt);const extSeo=[...seoTasks.slice(bestInt)];
+      intSeo.forEach(t=>{const ind=mI(t.project);const edO=Object.keys(eds).sort((a,b)=>eds[b].rem-eds[a].rem);let done=false;
+        for(const ed of edO){if(eds[ed].rem>=5){eds[ed].rem-=5;res.push({...t,assignee:ed,role:"內部編輯",reviewer:"-",locked:false,note:"內部編輯撰寫",industry:ind,matchTier:"-"});done=true;break;}}
+        if(!done)extSeo.push(t);});
+
+      extSeo.forEach(t=>{
+        const ind=mI(t.project);const rEd=mE(t.project,edMap);let done=false;
+        for(const w of wPri){
+          if((wr[w]||0)>0&&hasPrefMatch(w,t.project,prefMap)){
+            wr[w]-=1;const rv=rEd||Object.keys(eds)[0];if(eds[rv])eds[rv].rem-=1;
+            res.push({...t,assignee:w,role:"外稿寫手",reviewer:rv,locked:false,note:"外稿寫手",industry:ind,matchTier:"⭐ 優先專案"});done=true;break;
+          }
+        }
+        if(!done){for(const w of wPri){
+          if((wr[w]||0)>0&&(wSpec[w]||[]).includes(ind)){
+            wr[w]-=1;const rv=rEd||Object.keys(eds)[0];if(eds[rv])eds[rv].rem-=1;
+            res.push({...t,assignee:w,role:"外稿寫手",reviewer:rv,locked:false,note:"外稿寫手",industry:ind,matchTier:"🏷 產業匹配"});done=true;break;
+          }
+        }}
+        if(!done){for(const w of wPri){
+          if((wr[w]||0)>0){wr[w]-=1;const rv=rEd||Object.keys(eds)[0];if(eds[rv])eds[rv].rem-=1;
+            res.push({...t,assignee:w,role:"外稿寫手",reviewer:rv,locked:false,note:"外稿寫手",industry:ind,matchTier:"⚠️ 無匹配"});done=true;break;}
+        }}
+        if(!done)res.push({...t,assignee:"⚠️ 未分配",role:"-",reviewer:"-",locked:false,note:"無可用人員",industry:ind,matchTier:"-"});
+      });
+
+      const eN=Object.keys(eds);if(eN.length===2){const[a,b]=eN;let s=30;
+        while(s-->0){const hA=cH(res,a),hB=cH(res,b);
+          if(hA.total>edCfg[a].totalHours&&hB.total<edCfg[b].totalHours){const mv=res.find(r=>r.reviewer===a&&r.role==="外稿寫手");if(!mv)break;mv.reviewer=`${b}（代審）`;}
+          else if(hB.total>edCfg[b].totalHours&&hA.total<edCfg[a].totalHours){const mv=res.find(r=>(r.reviewer||"").replace(/（代審）/g,"").trim()===b&&r.role==="外稿寫手");if(!mv)break;mv.reviewer=`${a}（代審）`;}
+          else break;}}
+      return res;
+    }
+
+    /* ═══ UI Atoms ═══ */
+    const B=({children,color})=><span style={{display:"inline-block",padding:"2px 8px",borderRadius:999,fontSize:11,fontWeight:600,background:color||"#e5e7eb",color:"#1e293b",whiteSpace:"nowrap",lineHeight:"18px"}}>{children}</span>;
+    const P=({children,active,onClick,danger,disabled,small})=><button onClick={onClick} disabled={disabled} style={{padding:small?"4px 10px":"6px 14px",borderRadius:999,border:"none",cursor:disabled?"not-allowed":"pointer",fontSize:small?11:12,fontWeight:600,transition:"all .15s",opacity:disabled?.5:1,background:danger?(active?"#fecaca":"#fff5f5"):(active?"#0f172a":"#f1f5f9"),color:danger?"#dc2626":(active?"#fff":"#475569"),boxShadow:active?"0 1px 3px rgba(0,0,0,.15)":"none"}}>{children}</button>;
+    const SaveBtn=({onClick,label="💾 儲存設定"})=><button onClick={onClick} style={{padding:"7px 16px",borderRadius:8,border:"none",cursor:"pointer",fontSize:12,fontWeight:700,background:"#0f172a",color:"#fff",boxShadow:"0 2px 6px rgba(0,0,0,.15)",whiteSpace:"nowrap"}}>{label}</button>;
+    const M=({open,onClose,title,children,wide,extraWide})=>{if(!open)return null;return<div style={{position:"fixed",inset:0,zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(15,23,42,0.5)",backdropFilter:"blur(4px)"}} onClick={onClose}><div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:16,padding:"28px 32px",maxWidth:extraWide?1060:wide?860:560,width:"92%",boxShadow:"0 25px 50px rgba(0,0,0,.2)",maxHeight:"88vh",overflow:"auto"}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}><h3 style={{margin:0,fontSize:18,fontWeight:700}}>{title}</h3><button onClick={onClose} style={{border:"none",background:"#f1f5f9",borderRadius:8,width:32,height:32,cursor:"pointer",fontSize:16,color:"#64748b",display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button></div>{children}</div></div>;};
+    const FDZ=({label,onFile,accept,fileName})=>{const ref=useRef();const[d,setD]=useState(false);const h=f=>{if(!f)return;const r=new FileReader();r.onload=e=>onFile(e.target.result,f.name);r.readAsArrayBuffer(f);};return<div onDragOver={e=>{e.preventDefault();setD(true);}} onDragLeave={()=>setD(false)} onDrop={e=>{e.preventDefault();setD(false);h(e.dataTransfer.files[0]);}} onClick={()=>ref.current?.click()} style={{border:d?"2px solid #3b82f6":"2px dashed #cbd5e1",borderRadius:14,padding:"24px 20px",textAlign:"center",cursor:"pointer",background:fileName?"#f0fdf4":(d?"#eff6ff":"#fafbfc"),transition:"all .2s",marginBottom:12}}><input ref={ref} type="file" accept={accept} hidden onChange={e=>h(e.target.files[0])} /><div style={{fontSize:26,marginBottom:6}}>{fileName?"✅":"📄"}</div><div style={{fontSize:13,fontWeight:600,color:fileName?"#166534":"#475569"}}>{fileName||label}</div>{!fileName&&<div style={{fontSize:11,color:"#94a3b8",marginTop:3}}>拖曳或點擊上傳</div>}</div>;};
+
+    /* ═══ MAIN ═══ */
+    function App(){
+      const[phase,setPhase]=useState("setup");const[step,setStep]=useState(1);
+      const[taskFN,setTaskFN]=useState("");const[mapFN,setMapFN]=useState("");
+      const[rawTasks,setRawTasks]=useState([]);const[edMap,setEdMap]=useState({});
+      const[edCfg,setEdCfg]=useState({Krystina:{fullName:"Krystina Chien - 簡瑋葶",totalHours:10},Sara:{fullName:"Sara Chen - 陳姿蓉",totalHours:24}});
+
+      // ── 持久化狀態（從 localStorage 載入）──
+      const[wWriters,setWWriters]=useState(()=>lsLoad(LS_WRITERS,WP_DEFAULT));
+      const[wMax,setWMax]=useState(()=>{const saved=lsLoad(LS_WMAX,null);if(saved)return saved;const d={};WP_DEFAULT.forEach(w=>{d[w]=WMD[w]||1;});return d;});
+      const[wSpec,setWSpec]=useState(()=>lsLoad(LS_SPEC,WS_DEFAULT));
+      const[prefMap,setPrefMap]=useState(()=>lsLoad(LS_PREF,INIT_PREF));
+
+      const[orders,setOrders]=useState([]);
+      const[onLeave,setOnLeave]=useState(new Set());
+      const[view,setView]=useState("table");const[reassignM,setReassignM]=useState(null);
+      const[leaveM,setLeaveM]=useState(false);const[settingsM,setSettingsM]=useState(false);
+      const[writerMgmtM,setWriterMgmtM]=useState(false);
+      const[writerDraft,setWriterDraft]=useState([]); // [{id,name}] — id=原始名稱(不變)
+      const[newWriterName,setNewWriterName]=useState("");
+      const[logs,setLogs]=useState([]);const[toast,setToast]=useState(null);const[filter,setFilter]=useState("all");
+      const[indSearch,setIndSearch]=useState("");const[specSearch,setSpecSearch]=useState("");
+      const[prefEditWriter,setPrefEditWriter]=useState(null);const[prefSearch,setPrefSearch]=useState("");
+
+      const tt=useCallback((m,t="success")=>{setToast({msg:m,type:t});setTimeout(()=>setToast(null),3000);},[]);
+      const lg=useCallback(m=>{setLogs(p=>[{time:new Date().toLocaleTimeString("zh-TW"),msg:m},...p.slice(0,49)]);},[]);
+
+      // ── 儲存 / 還原 ──
+      const saveWSpec=useCallback(()=>{lsSave(LS_SPEC,wSpec);tt("✅ 寫手專長已儲存");},[wSpec,tt]);
+      const resetWSpec=useCallback(()=>{if(!window.confirm("確定要還原預設專長設定嗎？"))return;const d=JSON.parse(JSON.stringify(WS_DEFAULT));setWSpec(d);lsSave(LS_SPEC,d);tt("已還原預設專長","warn");},[tt]);
+      const savePrefMap=useCallback(()=>{lsSave(LS_PREF,prefMap);tt("✅ 優先專案已儲存");},[prefMap,tt]);
+      const resetPrefMap=useCallback(()=>{if(!window.confirm("確定要還原預設優先專案嗎？"))return;const d=JSON.parse(JSON.stringify(INIT_PREF));setPrefMap(d);lsSave(LS_PREF,d);tt("已還原預設優先專案","warn");},[tt]);
+
+      // ── 寫手管理 Modal ──
+      const openWriterMgmt=useCallback(()=>{
+        setWriterDraft(wWriters.map(w=>({id:w,name:w})));
+        setNewWriterName("");
+        setWriterMgmtM(true);
+      },[wWriters]);
+
+      const saveWriterMgmt=useCallback(()=>{
+        const valid=writerDraft.filter(d=>d.name.trim());
+        // 檢查重複
+        const names=valid.map(d=>d.name.trim());
+        if(new Set(names).size!==names.length){tt("寫手名稱有重複，請修正","warn");return;}
+        // 遷移資料：以 id 追蹤改名
+        let newWSpec={};let newPrefMap={};let newWMax={};
+        valid.forEach(({id,name})=>{
+          const n=name.trim();
+          newWSpec[n]=wSpec[id]||wSpec[n]||[];
+          newPrefMap[n]=prefMap[id]||prefMap[n]||[];
+          newWMax[n]=wMax[id]!==undefined?wMax[id]:(wMax[n]!==undefined?wMax[n]:1);
+        });
+        const newList=names;
+        // 更新 onLeave（改名同步）
+        const renames=valid.filter(({id,name})=>id!==name.trim());
+        setOnLeave(prev=>{const n=new Set();prev.forEach(l=>{const r=renames.find(x=>x.id===l);n.add(r?r.name.trim():l);});return n;});
+        setWWriters(newList);setWSpec(newWSpec);setPrefMap(newPrefMap);setWMax(newWMax);
+        lsSave(LS_WRITERS,newList);lsSave(LS_SPEC,newWSpec);lsSave(LS_PREF,newPrefMap);lsSave(LS_WMAX,newWMax);
+        setWriterMgmtM(false);
+        const renamed=renames.length;const added=valid.filter(({id})=>!wWriters.includes(id)).length;
+        tt(`✅ 已儲存（${newList.length} 位${renamed?`，改名 ${renamed} 位`:""}${added?`，新增 ${added} 位`:""}）`);
+        lg(`寫手名單更新：${newList.join("、")}`);
+      },[writerDraft,wSpec,prefMap,wMax,wWriters,onLeave,tt,lg]);
+
+      const addDraftWriter=()=>{
+        const n=newWriterName.trim();
+        if(!n){tt("請輸入寫手名稱","warn");return;}
+        if(writerDraft.some(d=>d.name===n)){tt("名稱已存在","warn");return;}
+        setWriterDraft(prev=>[...prev,{id:`__new_${Date.now()}`,name:n}]);
+        setNewWriterName("");
+      };
+      const removeDraftWriter=(id)=>setWriterDraft(prev=>prev.filter(d=>d.id!==id));
+      const updateDraftName=(id,name)=>setWriterDraft(prev=>prev.map(d=>d.id===id?{...d,name}:d));
+      const moveDraft=(id,dir)=>setWriterDraft(prev=>{const i=prev.findIndex(d=>d.id===id);if(i<0)return prev;const j=i+dir;if(j<0||j>=prev.length)return prev;const n=[...prev];[n[i],n[j]]=[n[j],n[i]];return n;});
+
+      const pT=useCallback(buf=>{const wb=XLSX.read(buf,{type:"array"});const ws=wb.Sheets[wb.SheetNames[0]];return XLSX.utils.sheet_to_json(ws).map(r=>({id:r["工單編號"]||"",assignee:r["執行人"]||"",type:r["工作類型"]||"",project:r["專案名稱"]||"",keyword:r["文章主關鍵字"]||"-",industry:mI(r["專案名稱"])})).filter(t=>t.id);},[]);
+      const pM=useCallback(buf=>{const wb=XLSX.read(buf,{type:"array"});const ws=wb.Sheets[wb.SheetNames[0]];const m={};XLSX.utils.sheet_to_json(ws).forEach(r=>{if(r["客戶名稱"]&&r["責任編輯"])m[String(r["客戶名稱"]).trim()]=String(r["責任編輯"]).trim();});return m;},[]);
+      const hTU=useCallback((buf,fn)=>{setTaskFN(fn);try{const p=pT(buf);setRawTasks(p);tt(`解析成功：${p.length} 筆`);}catch(e){tt("解析失敗","warn");}},[pT,tt]);
+      const hMU=useCallback((buf,fn)=>{setMapFN(fn);try{const m=pM(buf);setEdMap(m);tt(`對照表 ${Object.keys(m).length} 筆`);}catch(e){tt("對照表失敗","warn");}},[pM,tt]);
+
+      const doAlloc=useCallback(()=>{
+        const r=runAlloc(rawTasks,edMap,edCfg,wMax,wSpec,wWriters,prefMap,onLeave);
+        setOrders(r);setPhase("dashboard");setLogs([]);setView("table");
+        tt(`分配完成：${r.length} 筆`);lg("系統自動分配完成");
+      },[rawTasks,edMap,edCfg,wMax,wSpec,wWriters,prefMap,onLeave,tt,lg]);
+
+      const toggleLeave=p=>{setOnLeave(prev=>{const n=new Set(prev);if(n.has(p)){n.delete(p);tt(`${p} 已銷假`);}else{n.add(p);tt(`${p} 設為請假`,"warn");}return n;});};
+      const doReassign=(o,np)=>{const old=o.assignee;const isW=wWriters.includes(np);setOrders(p=>p.map(x=>x.id===o.id?{...x,assignee:np,role:isW?"外稿寫手":"內部編輯",reviewer:isW?(x.reviewer!=="-"?x.reviewer:"待指定"):"-",note:isW?"外稿（重新分配）":"內部（重新分配）",matchTier:isW?(hasPrefMatch(np,o.project,prefMap)?"⭐ 優先專案":(wSpec[np]||[]).includes(o.industry)?"🏷 產業匹配":"⚠️ 無匹配"):"-"}:x));lg(`${o.id} ${old}→${np}`);tt(`${o.id} → ${np}`);setReassignM(null);};
+      const updRv=(id,rv)=>{setOrders(p=>p.map(o=>o.id===id?{...o,reviewer:rv}:o));lg(`${id} 審稿→${rv}`);};
+      const togglePref=(writer,project)=>{setPrefMap(prev=>{const n={...prev};const arr=[...(n[writer]||[])];const idx=arr.findIndex(p=>p===project);if(idx>=0)arr.splice(idx,1);else arr.push(project);n[writer]=arr;return n;});};
+      const toggleWSpec=(writer,ind)=>{setWSpec(prev=>{const n={...prev};const arr=[...(n[writer]||[])];const idx=arr.indexOf(ind);if(idx>=0)arr.splice(idx,1);else arr.push(ind);n[writer]=arr;return n;});};
+
+      const allP=useMemo(()=>["Krystina","Sara",...wWriters],[wWriters]);
+      const eHrs=useMemo(()=>{const r={};Object.keys(edCfg).forEach(e=>{r[e]=cH(orders,e);});return r;},[orders,edCfg]);
+      const filtered=filter==="all"?orders:orders.filter(o=>o.role===filter);
+      const affected=orders.filter(o=>onLeave.has(o.assignee)||(o.reviewer&&onLeave.has(o.reviewer.replace(/（代審）/g,"").trim())));
+      const getCands=o=>{const c=[];Object.keys(edCfg).forEach(ed=>{if(onLeave.has(ed))return;const h=cH(orders.filter(x=>x.id!==o.id),ed);const av=(edCfg[ed]?.totalHours||0)-h.total;if(av>=(TASK_HOURS[o.type]||0))c.push({name:ed,type:"內部編輯",avail:av,match:true,tier:"-"});});wWriters.forEach(w=>{if(onLeave.has(w))return;const u=cWU(orders.filter(x=>x.id!==o.id),w);if(u>=(wMax[w]||0))return;const pref=hasPrefMatch(w,o.project,prefMap);const ind=(wSpec[w]||[]).includes(o.industry);c.push({name:w,type:"外稿寫手",avail:(wMax[w]||0)-u,match:pref||ind,tier:pref?"⭐ 優先專案":ind?"🏷 產業匹配":"—"});});
+        c.sort((a,b)=>{const rank=t=>t.tier==="⭐ 優先專案"?0:t.tier==="🏷 產業匹配"?1:2;return rank(a)-rank(b);});
+        return c;};
+
+      const Toast=toast?<div style={{position:"fixed",top:20,right:20,zIndex:2000,padding:"12px 20px",borderRadius:12,fontWeight:600,fontSize:13,background:toast.type==="warn"?"#fef3c7":"#dcfce7",color:toast.type==="warn"?"#92400e":"#166534",boxShadow:"0 4px 12px rgba(0,0,0,.1)"}}>{toast.msg}</div>:null;
+
+      /* ═══ SETUP ═══ */
+      if(phase==="setup")return(
+        <div style={{fontFamily:"'Noto Sans TC',-apple-system,sans-serif",minHeight:"100vh",background:"#f8fafc"}}>{Toast}
+          <div style={{maxWidth:640,margin:"0 auto",padding:"40px 24px"}}>
+            <div style={{textAlign:"center",marginBottom:32}}><h1 style={{fontSize:26,fontWeight:800,margin:0}}>工單分配系統</h1><p style={{color:"#64748b",fontSize:14,marginTop:6}}>三層智慧分配：優先專案 → 產業匹配 → 順序兜底</p></div>
+            <div style={{display:"flex",justifyContent:"center",gap:6,marginBottom:28}}>{[{n:1,l:"上傳檔案"},{n:2,l:"編輯工時"},{n:3,l:"寫手篇數/請假"},{n:4,l:"確認分配"}].map(s=><div key={s.n} style={{padding:"5px 12px",borderRadius:99,fontSize:11.5,fontWeight:600,background:step===s.n?"#0f172a":step>s.n?"#dcfce7":"#f1f5f9",color:step===s.n?"#fff":step>s.n?"#166534":"#94a3b8"}}>{step>s.n?"✓ ":""}{s.n}. {s.l}</div>)}</div>
+            <div style={{background:"#fff",borderRadius:16,padding:28,border:"1px solid #e2e8f0"}}>
+
+              {step===1&&<><h3 style={{margin:"0 0 16px",fontSize:16,fontWeight:700}}>📄 上傳工單與對照表</h3>
+                <FDZ label="上傳工單 Excel" accept=".xlsx,.xls,.csv" onFile={hTU} fileName={taskFN} />
+                <FDZ label="上傳專案×編輯窗口對照表" accept=".xlsx,.xls,.csv" onFile={hMU} fileName={mapFN} />
+                {rawTasks.length>0&&<div style={{padding:12,borderRadius:10,background:"#f8fafc",border:"1px solid #e2e8f0",fontSize:13,marginTop:8}}><strong>📊</strong> {rawTasks.length} 筆（已指派 {rawTasks.filter(t=>t.assignee).length} / 待分配 {rawTasks.filter(t=>!t.assignee).length}）<div style={{marginTop:6,display:"flex",flexWrap:"wrap",gap:4}}>{Object.entries(rawTasks.reduce((a,t)=>{a[t.type]=(a[t.type]||0)+1;return a;},{})).map(([k,v])=><B key={k} color="#e2e8f0">{k} ×{v}</B>)}</div></div>}
+                <div style={{display:"flex",justifyContent:"flex-end",marginTop:18}}><P active onClick={()=>setStep(2)} disabled={!rawTasks.length}>下一步 →</P></div></>}
+
+              {step===2&&<><h3 style={{margin:"0 0 16px",fontSize:16,fontWeight:700}}>⏱ 內部編輯剩餘工時</h3>
+                {Object.entries(edCfg).map(([n,c])=><div key={n} style={{display:"flex",alignItems:"center",gap:14,padding:"12px 14px",borderRadius:10,border:"1px solid #e2e8f0",marginBottom:8,background:"#fafbfc"}}><div style={{flex:1}}><div style={{fontWeight:700,fontSize:14}}>{n}</div><div style={{fontSize:11,color:"#64748b"}}>{c.fullName}</div></div><input type="number" min="0" max="80" step="0.5" value={c.totalHours} onChange={e=>setEdCfg(p=>({...p,[n]:{...p[n],totalHours:parseFloat(e.target.value)||0}}))} style={{width:68,padding:"7px 10px",borderRadius:8,border:"1px solid #cbd5e1",fontSize:16,fontWeight:700,textAlign:"center",outline:"none"}} /><span style={{fontSize:13,color:"#64748b",fontWeight:600}}>h</span></div>)}
+                <div style={{display:"flex",justifyContent:"space-between",marginTop:18}}><P onClick={()=>setStep(1)}>← 上一步</P><P active onClick={()=>setStep(3)}>下一步 →</P></div></>}
+
+              {step===3&&<>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                  <h3 style={{margin:0,fontSize:16,fontWeight:700}}>✍️ 外稿寫手篇數 &amp; 請假</h3>
+                  {onLeave.size>0&&<B color="#fecaca">⚠️ {onLeave.size} 人請假</B>}
+                </div>
+                <div style={{fontSize:11,color:"#64748b",marginBottom:10,padding:"7px 10px",borderRadius:7,background:"#f8fafc",border:"1px solid #e2e8f0"}}>設定本次工作篇數，並標記請假人員。請假寫手將在自動分配中被跳過。</div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+                  {wWriters.map((w,i)=>{const oL=onLeave.has(w);return(
+                    <div key={w} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 10px",borderRadius:8,border:oL?"1.5px solid #fca5a5":"1px solid #e2e8f0",background:oL?"#fef2f2":"#fafbfc"}}>
+                      <div style={{display:"flex",alignItems:"center",gap:5}}>
+                        <span style={{fontSize:10,color:"#94a3b8",fontFamily:"monospace",width:18}}>#{i+1}</span>
+                        <span style={{fontWeight:600,fontSize:12.5,color:oL?"#dc2626":"#0f172a"}}>{w}</span>
+                        {oL&&<B color="#fecaca">假</B>}
+                      </div>
+                      <div style={{display:"flex",alignItems:"center",gap:5}}>
+                        <input type="number" min="0" max="10" value={wMax[w]||0} disabled={oL} onChange={e=>setWMax(p=>({...p,[w]:parseInt(e.target.value)||0}))} style={{width:40,padding:"4px 5px",borderRadius:6,border:"1px solid #cbd5e1",fontSize:13,fontWeight:700,textAlign:"center",outline:"none",opacity:oL?.5:1}} />
+                        <button onClick={()=>toggleLeave(w)} title={oL?"取消請假":"設為請假"} style={{padding:"4px 7px",borderRadius:6,border:`1px solid ${oL?"#fca5a5":"#e2e8f0"}`,background:oL?"#fecaca":"#f1f5f9",cursor:"pointer",fontSize:12,lineHeight:1,color:oL?"#dc2626":"#64748b",fontWeight:700}}>{oL?"🔴":"🟢"}</button>
+                      </div>
+                    </div>
+                  );})}
+                </div>
+                <div style={{display:"flex",justifyContent:"space-between",marginTop:18}}><P onClick={()=>setStep(2)}>← 上一步</P><P active onClick={()=>setStep(4)}>下一步 →</P></div>
+              </>}
+
+              {step===4&&<><h3 style={{margin:"0 0 16px",fontSize:16,fontWeight:700}}>🚀 確認並執行</h3>
+                <div style={{display:"grid",gap:8}}>
+                  {[`📄 ${taskFN} — ${rawTasks.length}筆`,`📋 對照表 ${Object.keys(edMap).length}筆`,`⏱ ${Object.entries(edCfg).map(([k,v])=>`${k} ${v.totalHours}h`).join(" / ")}`,`✍️ 共 ${wWriters.length} 位外稿寫手`].map((s,i)=><div key={i} style={{padding:11,borderRadius:8,background:"#f8fafc",border:"1px solid #e2e8f0",fontSize:12.5}}>{s}</div>)}
+                  {onLeave.size>0&&<div style={{padding:11,borderRadius:8,background:"#fef2f2",border:"1px solid #fca5a5",fontSize:12.5,color:"#dc2626"}}>🏖 請假：{[...onLeave].join("、")}</div>}
+                </div>
+                <div style={{marginTop:12,padding:10,borderRadius:8,background:"#eff6ff",border:"1px solid #bfdbfe",fontSize:12,color:"#1e40af"}}>⭐ 三層分配：優先專案 → 產業匹配 → 順序兜底。請假寫手自動跳過，編輯工時自動平衡。</div>
+                <div style={{display:"flex",justifyContent:"space-between",marginTop:20}}><P onClick={()=>setStep(3)}>← 上一步</P><button onClick={doAlloc} style={{padding:"11px 28px",borderRadius:12,border:"none",cursor:"pointer",fontSize:15,fontWeight:700,color:"#fff",background:"linear-gradient(135deg,#0f172a,#1e3a5f)",boxShadow:"0 4px 12px rgba(15,23,42,.25)"}}>⚡ 執行自動分配</button></div></>}
+            </div>
+          </div>
+          <style>{`@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;600;700;800&display=swap');*{box-sizing:border-box}button:hover:not(:disabled){opacity:.85}input:focus{border-color:#3b82f6!important;box-shadow:0 0 0 3px rgba(59,130,246,.15)}`}</style>
+        </div>);
+
+      /* ═══ DASHBOARD ═══ */
+      return(
+        <div style={{fontFamily:"'Noto Sans TC',-apple-system,sans-serif",minHeight:"100vh",background:"#f8fafc",color:"#0f172a"}}>{Toast}
+          <header style={{background:"linear-gradient(135deg,#0f172a,#1e3a5f)",padding:"18px 28px",color:"#fff"}}><div style={{maxWidth:1200,margin:"0 auto"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
+              <div><h1 style={{margin:0,fontSize:19,fontWeight:800}}>工單分配系統</h1><p style={{margin:"2px 0 0",fontSize:11.5,opacity:.7}}>{taskFN} ・ {orders.length} 筆</p></div>
+              <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+                {[{k:"table",l:"📋 總表"},{k:"hours",l:"⏱ 工時"},{k:"kanban",l:"👥 看板"},{k:"industry",l:"🏷 專案產業"},{k:"specs",l:"🎯 寫手專長"},{k:"pref",l:"⭐ 優先專案"}].map(v=><P key={v.k} active={view===v.k} onClick={()=>setView(v.k)}>{v.l}</P>)}
+                <P onClick={()=>setLeaveM(true)} danger={onLeave.size>0}>🏖 請假{onLeave.size>0?` (${onLeave.size})`:""}</P>
+                <P onClick={()=>setSettingsM(true)}>⚙️</P>
+                <P onClick={()=>{setPhase("setup");setStep(1);}}>📤 重新上傳</P>
+              </div>
+            </div>
+            {affected.length>0&&<div style={{marginTop:10,padding:"9px 12px",borderRadius:8,background:"rgba(251,191,36,.15)",border:"1px solid rgba(251,191,36,.3)",fontSize:11.5,color:"#fef3c7"}}>⚠️ {onLeave.size} 人請假，{affected.length} 筆需重新分配</div>}
+          </div></header>
+
+          <main style={{maxWidth:1200,margin:"0 auto",padding:"18px 28px"}}>
+            {/* TABLE */}
+            {view==="table"&&<><div style={{display:"flex",gap:5,marginBottom:12,flexWrap:"wrap"}}>{["all","內部編輯","外稿寫手"].map(f=><P key={f} active={filter===f} onClick={()=>setFilter(f)}>{f==="all"?"全部":f} ({f==="all"?orders.length:orders.filter(o=>o.role===f).length})</P>)}</div>
+              <div style={{overflowX:"auto",borderRadius:12,border:"1px solid #e2e8f0",background:"#fff"}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}><thead><tr style={{background:"#f8fafc"}}>{["工單編號","執行人","工作類型","專案名稱","產業","關鍵字","匹配","審稿","操作"].map(h=><th key={h} style={{padding:"9px 10px",textAlign:"left",fontWeight:700,borderBottom:"2px solid #e2e8f0",fontSize:11,color:"#64748b",whiteSpace:"nowrap"}}>{h}</th>)}</tr></thead>
+              <tbody>{filtered.map((o,i)=>{const oL=onLeave.has(o.assignee),rL=o.reviewer&&onLeave.has(o.reviewer.replace(/（代審）/g,"").trim());
+                return<tr key={o.id} style={{background:oL?"#fef2f2":i%2===0?"#fff":"#fafbfc"}}>
+                  <td style={{padding:"8px 10px",borderBottom:"1px solid #f1f5f9",fontFamily:"monospace",fontWeight:600,fontSize:11,color:"#475569"}}>{o.id}</td>
+                  <td style={{padding:"8px 10px",borderBottom:"1px solid #f1f5f9"}}><div style={{display:"flex",alignItems:"center",gap:4}}><span style={{fontWeight:600,color:oL?"#dc2626":"#0f172a"}}>{o.assignee}</span>{oL&&<B color="#fecaca">假</B>}<B color={o.role==="內部編輯"?"#dbeafe":"#fef3c7"}>{o.role==="內部編輯"?"內":"外"}</B></div></td>
+                  <td style={{padding:"8px 10px",borderBottom:"1px solid #f1f5f9",fontWeight:500}}>{o.type}</td>
+                  <td style={{padding:"8px 10px",borderBottom:"1px solid #f1f5f9",maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{o.project}</td>
+                  <td style={{padding:"8px 10px",borderBottom:"1px solid #f1f5f9"}}><B color={IC[o.industry]}>{o.industry}</B></td>
+                  <td style={{padding:"8px 10px",borderBottom:"1px solid #f1f5f9",color:"#64748b"}}>{o.keyword}</td>
+                  <td style={{padding:"8px 10px",borderBottom:"1px solid #f1f5f9",fontSize:11}}>{o.matchTier&&o.matchTier!=="-"?o.matchTier:""}</td>
+                  <td style={{padding:"8px 10px",borderBottom:"1px solid #f1f5f9"}}>{o.reviewer!=="-"?<span style={{color:rL?"#dc2626":"#475569"}}>{o.reviewer}{rL&&" ⚠️"}</span>:<span style={{color:"#94a3b8"}}>—</span>}</td>
+                  <td style={{padding:"8px 10px",borderBottom:"1px solid #f1f5f9"}}>{!o.locked?<button onClick={()=>setReassignM(o)} style={{padding:"4px 9px",borderRadius:6,border:"1px solid #e2e8f0",background:oL?"#fecaca":"#fff",cursor:"pointer",fontSize:10.5,fontWeight:600,color:oL?"#dc2626":"#475569"}}>{oL?"🔄":"✏️"}</button>:<span style={{fontSize:10,color:"#94a3b8"}}>🔒</span>}</td>
+                </tr>;})}</tbody></table></div></>}
+
+            {/* HOURS */}
+            {view==="hours"&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>{Object.entries(edCfg).map(([n,c])=>{const h=eHrs[n]||{write:0,review:0,total:0};const pct=Math.min(100,(h.total/c.totalHours)*100);const ov=h.total>c.totalHours;const myO=orders.filter(o=>o.assignee===n);const myR=orders.filter(o=>(o.reviewer||"").replace(/（代審）/g,"").trim()===n);
+              return<div key={n} style={{background:"#fff",borderRadius:14,padding:20,border:ov?"2px solid #fca5a5":"1px solid #e2e8f0"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}><div><h3 style={{margin:0,fontSize:16,fontWeight:700}}>{n}</h3><p style={{margin:"2px 0 0",fontSize:11,color:"#64748b"}}>{c.fullName}</p></div><div style={{textAlign:"right"}}><div style={{fontSize:24,fontWeight:800,color:ov?"#dc2626":"#0f172a"}}>{h.total}h</div><div style={{fontSize:11,color:"#94a3b8"}}>/ {c.totalHours}h</div></div></div>
+                <div style={{height:5,borderRadius:99,background:"#f1f5f9",marginBottom:12,overflow:"hidden"}}><div style={{height:"100%",borderRadius:99,width:`${pct}%`,background:ov?"#ef4444":pct>90?"#f59e0b":"#22c55e",transition:"width .5s"}} /></div>
+                <div style={{display:"flex",gap:12,marginBottom:12,fontSize:12}}><div><span style={{color:"#64748b"}}>撰寫</span> <strong>{h.write}h</strong></div><div><span style={{color:"#64748b"}}>審稿</span> <strong>{h.review}h</strong></div><div><span style={{color:"#64748b"}}>剩餘</span> <strong style={{color:ov?"#dc2626":"#16a34a"}}>{c.totalHours-h.total}h</strong></div></div>
+                <div style={{fontSize:11,color:"#64748b"}}><div style={{fontWeight:600,marginBottom:3}}>撰寫 ({myO.length})</div>{myO.map(o=><div key={o.id} style={{padding:"2px 0",display:"flex",gap:4,alignItems:"center"}}><span style={{fontFamily:"monospace",fontSize:10,color:"#94a3b8"}}>{o.id}</span><span>{o.type}</span><B color={IC[o.industry]}>{o.project}</B><span style={{marginLeft:"auto",fontWeight:600}}>{TASK_HOURS[o.type]}h</span></div>)}
+                {myR.length>0&&<><div style={{fontWeight:600,marginTop:8,marginBottom:3}}>審稿 ({myR.length})</div>{myR.map(o=><div key={o.id} style={{padding:"2px 0",display:"flex",gap:4,alignItems:"center"}}><span style={{fontFamily:"monospace",fontSize:10,color:"#94a3b8"}}>{o.id}</span><span>{o.assignee}</span><B color={IC[o.industry]}>{o.project}</B><span style={{marginLeft:"auto",fontWeight:600}}>1h</span></div>)}</>}</div>
+              </div>;})}</div>}
+
+            {/* KANBAN */}
+            {view==="kanban"&&<div style={{display:"flex",gap:9,overflowX:"auto",paddingBottom:10}}>{allP.filter(p=>orders.some(o=>o.assignee===p)||["Krystina","Sara"].includes(p)).map(p=>{const asgn=orders.filter(o=>o.assignee===p);const isE=["Krystina","Sara"].includes(p);const oL=onLeave.has(p);const h=isE?(eHrs[p]||{total:0}):null;const wu=!isE?cWU(orders,p):0;const wm=wMax[p]||0;
+              return<div key={p} style={{minWidth:195,maxWidth:235,flex:"0 0 auto",background:oL?"#fef2f2":"#fff",borderRadius:11,border:"1px solid #e2e8f0",overflow:"hidden"}}>
+                <div style={{padding:"11px 13px",background:isE?"linear-gradient(135deg,#1e3a5f,#2563eb)":"#f8fafc",color:isE?"#fff":"#0f172a"}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><strong style={{fontSize:13}}>{p}</strong>{oL&&<B color="#fecaca">假</B>}</div><div style={{fontSize:10,opacity:.8,marginTop:2}}>{isE?`${h.total}h / ${edCfg[p].totalHours}h`:`${wu}/${wm} 篇`}</div></div>
+                <div style={{padding:5}}>{asgn.map(o=><div key={o.id} style={{padding:"6px 8px",marginBottom:3,borderRadius:6,background:oL?"#fee2e2":"#f8fafc",border:oL?"1px dashed #fca5a5":"1px solid #f1f5f9",fontSize:10.5}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><span style={{fontFamily:"monospace",fontSize:9,color:"#94a3b8"}}>{o.id}</span>{o.matchTier&&o.matchTier!=="-"&&<span style={{fontSize:9}}>{o.matchTier.slice(0,2)}</span>}</div>
+                  <div style={{fontWeight:600,marginTop:2}}>{o.type}</div><div style={{color:"#64748b",fontSize:10}}>{o.project}</div>
+                  {oL&&!o.locked&&<button onClick={()=>setReassignM(o)} style={{marginTop:3,width:"100%",padding:"3px 0",borderRadius:4,border:"1px solid #fca5a5",background:"#fff",color:"#dc2626",fontSize:10,fontWeight:600,cursor:"pointer"}}>🔄</button>}
+                </div>)}{asgn.length===0&&<div style={{padding:10,textAlign:"center",color:"#94a3b8",fontSize:10}}>無工單</div>}</div>
+              </div>;})}</div>}
+
+            {/* INDUSTRY MAP */}
+            {view==="industry"&&<div style={{background:"#fff",borderRadius:14,border:"1px solid #e2e8f0",padding:22}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}><h3 style={{margin:0,fontSize:17,fontWeight:700}}>🏷 專案 × 產業對照表</h3><input placeholder="搜尋專案..." value={indSearch} onChange={e=>setIndSearch(e.target.value)} style={{padding:"6px 12px",borderRadius:8,border:"1px solid #cbd5e1",fontSize:12,outline:"none",width:200}} /></div>
+              <div style={{display:"grid",gap:14}}>{ALL_IND.map(ind=>{const ps=(PIG[ind]||[]).filter(p=>!indSearch||p.toLowerCase().includes(indSearch.toLowerCase()));if(indSearch&&!ps.length)return null;return<div key={ind}><div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}><B color={IC[ind]}>{ind}</B><span style={{fontSize:12,color:"#94a3b8"}}>{ps.length}個</span></div><div style={{display:"flex",flexWrap:"wrap",gap:5}}>{ps.map(p=><div key={p} style={{padding:"5px 11px",borderRadius:8,background:"#f8fafc",border:"1px solid #e2e8f0",fontSize:12,fontWeight:500}}>{p}</div>)}</div></div>;})}</div>
+            </div>}
+
+            {/* WRITER SPECIALTIES */}
+            {view==="specs"&&<div style={{background:"#fff",borderRadius:14,border:"1px solid #e2e8f0",padding:22}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,flexWrap:"wrap",gap:8}}>
+                <h3 style={{margin:0,fontSize:17,fontWeight:700}}>🎯 寫手專長產業</h3>
+                <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                  <input placeholder="搜尋..." value={specSearch} onChange={e=>setSpecSearch(e.target.value)} style={{padding:"6px 12px",borderRadius:8,border:"1px solid #cbd5e1",fontSize:12,outline:"none",width:150}} />
+                  <SaveBtn onClick={saveWSpec} />
+                  <button onClick={resetWSpec} style={{padding:"7px 12px",borderRadius:8,border:"1px solid #e2e8f0",cursor:"pointer",fontSize:12,fontWeight:600,background:"#fff5f5",color:"#dc2626",whiteSpace:"nowrap"}}>↺ 還原預設</button>
+                </div>
+              </div>
+              <p style={{margin:"0 0 14px",fontSize:11.5,color:"#64748b"}}>點擊格子切換專長，儲存後下次開啟自動載入。</p>
+              <div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:11.5}}><thead><tr style={{background:"#f8fafc"}}><th style={{padding:"8px 10px",textAlign:"left",fontWeight:700,borderBottom:"2px solid #e2e8f0",fontSize:11,color:"#64748b",position:"sticky",left:0,background:"#f8fafc",zIndex:1,minWidth:80}}>寫手</th>{ALL_IND.map(ind=><th key={ind} style={{padding:"6px 4px",textAlign:"center",fontWeight:600,borderBottom:"2px solid #e2e8f0",fontSize:10,color:"#64748b",minWidth:56}}><B color={IC[ind]}>{ind}</B></th>)}<th style={{padding:"8px",textAlign:"left",fontWeight:700,borderBottom:"2px solid #e2e8f0",fontSize:11,color:"#64748b",minWidth:50}}>篇數</th></tr></thead>
+              <tbody>{wWriters.filter(w=>!specSearch||w.includes(specSearch)||(wSpec[w]||[]).some(s=>s.includes(specSearch))).map((w,i)=>{const used=cWU(orders,w);const max=wMax[w]||0;
+                return<tr key={w} style={{background:i%2===0?"#fff":"#fafbfc"}}><td style={{padding:"8px 10px",borderBottom:"1px solid #f1f5f9",fontWeight:600,fontSize:12,position:"sticky",left:0,background:i%2===0?"#fff":"#fafbfc",zIndex:1}}><div style={{display:"flex",alignItems:"center",gap:4}}><span style={{fontSize:10,color:"#94a3b8",fontFamily:"monospace"}}>#{i+1}</span>{w}</div></td>
+                {ALL_IND.map(ind=>{const has=(wSpec[w]||[]).includes(ind);return<td key={ind} onClick={()=>toggleWSpec(w,ind)} style={{padding:"6px 4px",textAlign:"center",borderBottom:"1px solid #f1f5f9",cursor:"pointer",userSelect:"none"}} title={`${has?"移除":"新增"} ${w} ➜ ${ind}`}>
+                  {has?<div style={{width:22,height:22,borderRadius:6,background:"#dcfce7",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:13}}>✓</div>:<span style={{color:"#d1d5db",fontSize:16,display:"inline-block",width:22,textAlign:"center",lineHeight:"22px"}}>—</span>}
+                </td>;})}
+                <td style={{padding:"8px 10px",borderBottom:"1px solid #f1f5f9",fontWeight:600,fontSize:12}}><span style={{color:used>=max?"#dc2626":"#16a34a"}}>{used}</span><span style={{color:"#94a3b8"}}>/{max}</span></td></tr>;})}</tbody></table></div>
+            </div>}
+
+            {/* PREFERRED PROJECTS */}
+            {view==="pref"&&<div style={{background:"#fff",borderRadius:14,border:"1px solid #e2e8f0",padding:22}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:8}}>
+                <h3 style={{margin:0,fontSize:17,fontWeight:700}}>⭐ 寫手優先專案管理</h3>
+                <div style={{display:"flex",gap:6}}>
+                  <SaveBtn onClick={savePrefMap} />
+                  <button onClick={resetPrefMap} style={{padding:"7px 12px",borderRadius:8,border:"1px solid #e2e8f0",cursor:"pointer",fontSize:12,fontWeight:600,background:"#fff5f5",color:"#dc2626",whiteSpace:"nowrap"}}>↺ 還原預設</button>
+                </div>
+              </div>
+              <p style={{margin:"0 0 16px",fontSize:12,color:"#64748b"}}>點擊寫手卡片可編輯，儲存後下次開啟自動載入。</p>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:10}}>
+                {wWriters.map(w=>{const prefs=prefMap[w]||[];const used=cWU(orders,w);const max=wMax[w]||0;
+                  return<div key={w} onClick={()=>setPrefEditWriter(w)} style={{padding:"12px 14px",borderRadius:10,border:"1px solid #e2e8f0",background:"#fafbfc",cursor:"pointer",transition:"all .15s"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                      <div style={{display:"flex",alignItems:"center",gap:6}}><strong style={{fontSize:13}}>{w}</strong><span style={{fontSize:11,fontWeight:600,color:used>=max?"#dc2626":"#16a34a"}}>{used}/{max}</span></div>
+                      <span style={{fontSize:11,color:"#94a3b8"}}>{prefs.length} 個 ✏️</span>
+                    </div>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:3}}>{prefs.length>0?prefs.slice(0,8).map(p=><B key={p} color="#fef3c7">{p}</B>):<span style={{fontSize:11,color:"#94a3b8"}}>尚無優先專案</span>}
+                      {prefs.length>8&&<B color="#e2e8f0">+{prefs.length-8}</B>}
+                    </div>
+                  </div>;
+                })}
+              </div>
+              <div style={{marginTop:16,padding:10,borderRadius:8,background:"#eff6ff",border:"1px solid #bfdbfe",fontSize:12,color:"#1e40af"}}>💡 修改後需點「💾 儲存設定」才能在下次上傳時使用。</div>
+            </div>}
+
+            {logs.length>0&&<div style={{marginTop:18,background:"#fff",borderRadius:10,border:"1px solid #e2e8f0",padding:12}}><h4 style={{margin:"0 0 8px",fontSize:12,fontWeight:700,color:"#64748b"}}>📝 操作紀錄</h4><div style={{maxHeight:120,overflow:"auto"}}>{logs.map((l,i)=><div key={i} style={{padding:"2px 0",fontSize:11,color:"#475569",borderBottom:"1px solid #f8fafc"}}><span style={{fontFamily:"monospace",color:"#94a3b8",marginRight:5}}>{l.time}</span>{l.msg}</div>)}</div></div>}
+          </main>
+
+          {/* Leave Modal */}
+          <M open={leaveM} onClose={()=>setLeaveM(false)} title="🏖 請假管理"><div style={{display:"flex",flexDirection:"column",gap:4}}>{allP.map(p=>{const oL=onLeave.has(p);return<div key={p} onClick={()=>toggleLeave(p)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 11px",borderRadius:7,cursor:"pointer",background:oL?"#fef2f2":"#f8fafc",border:oL?"1px solid #fca5a5":"1px solid #e2e8f0"}}><div style={{display:"flex",alignItems:"center",gap:5}}><div style={{width:7,height:7,borderRadius:99,background:oL?"#ef4444":"#22c55e"}} /><span style={{fontWeight:600,fontSize:12}}>{p}</span>{["Krystina","Sara"].includes(p)&&<B color="#dbeafe">編輯</B>}</div><span style={{fontSize:15}}>{oL?"🔴":"🟢"}</span></div>;})}</div></M>
+
+          {/* Settings Modal */}
+          <M open={settingsM} onClose={()=>setSettingsM(false)} title="⚙️ 設定" wide>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:18,marginBottom:20}}>
+              <div><h4 style={{margin:"0 0 8px",fontSize:13,fontWeight:700}}>⏱ 編輯工時</h4>{Object.entries(edCfg).map(([n,c])=><div key={n} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 10px",borderRadius:7,border:"1px solid #e2e8f0",marginBottom:5}}><span style={{fontWeight:600,fontSize:12.5}}>{n}</span><div style={{display:"flex",alignItems:"center",gap:5}}><input type="number" min="0" max="80" step="0.5" value={c.totalHours} onChange={e=>setEdCfg(p=>({...p,[n]:{...p[n],totalHours:parseFloat(e.target.value)||0}}))} style={{width:55,padding:"4px 6px",borderRadius:5,border:"1px solid #cbd5e1",fontSize:13,fontWeight:700,textAlign:"center",outline:"none"}} /><span style={{fontSize:11,color:"#64748b"}}>h</span></div></div>)}</div>
+              <div><h4 style={{margin:"0 0 8px",fontSize:13,fontWeight:700}}>✍️ 寫手篇數</h4><div style={{maxHeight:240,overflow:"auto"}}>{wWriters.map(w=><div key={w} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"5px 8px",borderRadius:5,border:"1px solid #f1f5f9",marginBottom:3}}><span style={{fontWeight:600,fontSize:11.5}}>{w}</span><input type="number" min="0" max="10" value={wMax[w]||0} onChange={e=>setWMax(p=>({...p,[w]:parseInt(e.target.value)||0}))} style={{width:38,padding:"3px",borderRadius:4,border:"1px solid #cbd5e1",fontSize:12,fontWeight:700,textAlign:"center",outline:"none"}} /></div>)}</div></div>
+            </div>
+            {/* Writer Management Section */}
+            <div style={{borderTop:"1px solid #e2e8f0",paddingTop:18}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+                <h4 style={{margin:0,fontSize:13,fontWeight:700}}>👥 寫手名單管理</h4>
+                <button onClick={openWriterMgmt} style={{padding:"7px 14px",borderRadius:8,border:"none",cursor:"pointer",fontSize:12,fontWeight:700,background:"#0f172a",color:"#fff"}}>✏️ 編輯寫手名單</button>
+              </div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
+                {wWriters.map((w,i)=><div key={w} style={{padding:"4px 10px",borderRadius:7,background:"#f8fafc",border:"1px solid #e2e8f0",fontSize:12,fontWeight:500}}>
+                  <span style={{color:"#94a3b8",fontSize:10,marginRight:4}}>#{i+1}</span>{w}
+                </div>)}
+              </div>
+              <p style={{margin:"8px 0 0",fontSize:11,color:"#94a3b8"}}>共 {wWriters.length} 位寫手。改名時會自動遷移專長與優先專案設定。</p>
+            </div>
+          </M>
+
+          {/* Writer Management Modal */}
+          <M open={writerMgmtM} onClose={()=>setWriterMgmtM(false)} title="👥 編輯寫手名單" wide>
+            <p style={{margin:"0 0 14px",fontSize:12,color:"#64748b"}}>可直接修改名稱、調整順序或刪除。改名後相關專長與優先專案設定會自動遷移。</p>
+            <div style={{display:"flex",flexDirection:"column",gap:5,marginBottom:16,maxHeight:"52vh",overflow:"auto",paddingRight:4}}>
+              {writerDraft.map((d,i)=>(
+                <div key={d.id} style={{display:"flex",alignItems:"center",gap:7,padding:"6px 10px",borderRadius:8,border:"1px solid #e2e8f0",background:"#fafbfc"}}>
+                  <span style={{fontSize:10,color:"#94a3b8",fontFamily:"monospace",width:22,textAlign:"right",flexShrink:0}}>#{i+1}</span>
+                  <input
+                    value={d.name}
+                    onChange={e=>updateDraftName(d.id,e.target.value)}
+                    placeholder="輸入寫手名稱"
+                    style={{flex:1,padding:"6px 10px",borderRadius:6,border:"1px solid #cbd5e1",fontSize:13,fontWeight:600,outline:"none",minWidth:0}}
+                  />
+                  {/* 原始名稱提示（若已修改）*/}
+                  {d.id!==d.name&&!d.id.startsWith("__new_")&&
+                    <span style={{fontSize:10,color:"#94a3b8",whiteSpace:"nowrap",flexShrink:0}}>原：{d.id}</span>}
+                  <div style={{display:"flex",gap:3,flexShrink:0}}>
+                    <button onClick={()=>moveDraft(d.id,-1)} disabled={i===0} title="上移" style={{padding:"3px 6px",borderRadius:5,border:"1px solid #e2e8f0",background:"#f8fafc",cursor:"pointer",fontSize:12,opacity:i===0?.3:1}}>↑</button>
+                    <button onClick={()=>moveDraft(d.id,1)} disabled={i===writerDraft.length-1} title="下移" style={{padding:"3px 6px",borderRadius:5,border:"1px solid #e2e8f0",background:"#f8fafc",cursor:"pointer",fontSize:12,opacity:i===writerDraft.length-1?.3:1}}>↓</button>
+                    <button onClick={()=>removeDraftWriter(d.id)} title="刪除" style={{padding:"3px 8px",borderRadius:5,border:"1px solid #fca5a5",background:"#fff5f5",cursor:"pointer",fontSize:12,color:"#dc2626",fontWeight:700}}>✕</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {/* 新增寫手 */}
+            <div style={{display:"flex",gap:7,marginBottom:16,padding:"10px 12px",borderRadius:8,background:"#f0fdf4",border:"1px solid #bbf7d0"}}>
+              <input
+                value={newWriterName}
+                onChange={e=>setNewWriterName(e.target.value)}
+                onKeyDown={e=>e.key==="Enter"&&addDraftWriter()}
+                placeholder="輸入新寫手名稱，按 Enter 或點新增"
+                style={{flex:1,padding:"7px 10px",borderRadius:6,border:"1px solid #86efac",fontSize:13,fontWeight:600,outline:"none"}}
+              />
+              <button onClick={addDraftWriter} style={{padding:"7px 14px",borderRadius:7,border:"none",background:"#16a34a",color:"#fff",cursor:"pointer",fontSize:13,fontWeight:700,whiteSpace:"nowrap"}}>+ 新增</button>
+            </div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <span style={{fontSize:12,color:"#64748b"}}>共 {writerDraft.filter(d=>d.name.trim()).length} 位寫手</span>
+              <div style={{display:"flex",gap:8}}>
+                <button onClick={()=>setWriterMgmtM(false)} style={{padding:"8px 16px",borderRadius:8,border:"1px solid #e2e8f0",background:"#f8fafc",cursor:"pointer",fontSize:13,fontWeight:600,color:"#475569"}}>取消</button>
+                <button onClick={saveWriterMgmt} style={{padding:"8px 20px",borderRadius:8,border:"none",background:"#0f172a",color:"#fff",cursor:"pointer",fontSize:13,fontWeight:700,boxShadow:"0 2px 6px rgba(0,0,0,.15)"}}>💾 儲存名單</button>
+              </div>
+            </div>
+          </M>
+
+          {/* Reassign Modal */}
+          <M open={!!reassignM} onClose={()=>setReassignM(null)} title={reassignM?`重新分配 ${reassignM.id}`:""}>
+            {reassignM&&(()=>{const o=reassignM;const cands=getCands(o);return<>
+              <div style={{padding:10,borderRadius:8,background:"#f8fafc",marginBottom:12,border:"1px solid #e2e8f0",fontSize:12}}>
+                <div><strong>類型：</strong>{o.type}（{TASK_HOURS[o.type]}h）</div>
+                <div><strong>專案：</strong>{o.project} <B color={IC[o.industry]}>{o.industry}</B></div>
+                <div><strong>目前：</strong><span style={{color:onLeave.has(o.assignee)?"#dc2626":"inherit"}}>{o.assignee}{onLeave.has(o.assignee)&&"（請假）"}</span></div>
+              </div>
+              <h4 style={{margin:"0 0 6px",fontSize:13,fontWeight:700,color:"#475569"}}>可接手人員</h4>
+              {cands.length===0?<div style={{padding:14,textAlign:"center",color:"#94a3b8",fontSize:12}}>無符合人員</div>:
+              <div style={{display:"flex",flexDirection:"column",gap:4}}>{cands.map(c=><div key={c.name} onClick={()=>doReassign(o,c.name)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 11px",borderRadius:7,cursor:"pointer",background:c.tier==="⭐ 優先專案"?"#fffbeb":c.match?"#f0fdf4":"#fff",border:c.tier==="⭐ 優先專案"?"1px solid #fde68a":c.match?"1px solid #bbf7d0":"1px solid #e2e8f0"}}>
+                <div style={{display:"flex",alignItems:"center",gap:5}}><strong style={{fontSize:12}}>{c.name}</strong><B color={c.type==="內部編輯"?"#dbeafe":"#fef3c7"}>{c.type}</B>{c.tier&&c.tier!=="—"&&<B color={c.tier.includes("⭐")?"#fde68a":"#bbf7d0"}>{c.tier}</B>}</div>
+                <span style={{fontSize:11,color:"#64748b"}}>{c.type==="內部編輯"?`剩${c.avail}h`:`剩${c.avail}篇`}</span>
+              </div>)}</div>}
+              {o.role==="外稿寫手"&&o.reviewer!=="-"&&<div style={{marginTop:12}}><h4 style={{margin:"0 0 5px",fontSize:12,fontWeight:700,color:"#475569"}}>審稿編輯</h4><div style={{display:"flex",gap:5,flexWrap:"wrap"}}>{Object.keys(edCfg).filter(e=>!onLeave.has(e)).flatMap(ed=>[<P key={ed} active={o.reviewer===ed} onClick={()=>updRv(o.id,ed)} small>{ed}</P>,<P key={ed+"d"} active={o.reviewer===`${ed}（代審）`} onClick={()=>updRv(o.id,`${ed}（代審）`)} small>{ed}（代審）</P>])}</div></div>}
+            </>;})()}
+          </M>
+
+          {/* Pref Edit Modal */}
+          <M open={!!prefEditWriter} onClose={()=>{setPrefEditWriter(null);setPrefSearch("");}} title={prefEditWriter?`⭐ ${prefEditWriter} 的優先專案`:""} wide>
+            {prefEditWriter&&(()=>{const w=prefEditWriter;const prefs=new Set(prefMap[w]||[]);
+              return<>
+                <div style={{marginBottom:12,display:"flex",gap:8,alignItems:"center"}}>
+                  <input placeholder="搜尋專案名稱..." value={prefSearch} onChange={e=>setPrefSearch(e.target.value)} style={{flex:1,padding:"8px 12px",borderRadius:8,border:"1px solid #cbd5e1",fontSize:13,outline:"none"}} />
+                  <span style={{fontSize:12,color:"#64748b",whiteSpace:"nowrap"}}>已選 {prefs.size} 個</span>
+                </div>
+                <div style={{display:"grid",gap:12}}>
+                  {ALL_IND.map(ind=>{const ps=(PIG[ind]||[]).filter(p=>!prefSearch||p.toLowerCase().includes(prefSearch.toLowerCase()));
+                    if(prefSearch&&!ps.length)return null;
+                    return<div key={ind}>
+                      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}><B color={IC[ind]}>{ind}</B></div>
+                      <div style={{display:"flex",flexWrap:"wrap",gap:5}}>{ps.map(p=>{const sel=prefs.has(p);
+                        return<div key={p} onClick={()=>togglePref(w,p)} style={{padding:"6px 12px",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:sel?600:400,transition:"all .15s",background:sel?"#fef3c7":"#f8fafc",border:sel?"1.5px solid #f59e0b":"1px solid #e2e8f0",color:sel?"#92400e":"#475569"}}>
+                          {sel?"⭐ ":""}{p}
+                        </div>;})}</div>
+                    </div>;})}
+                </div>
+                <div style={{marginTop:16,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <span style={{fontSize:11,color:"#94a3b8"}}>點「完成並儲存」同步寫入本機</span>
+                  <button onClick={()=>{lsSave(LS_PREF,prefMap);setPrefEditWriter(null);setPrefSearch("");tt(`${w} 優先專案已更新並儲存`);}} style={{padding:"8px 18px",borderRadius:8,border:"none",cursor:"pointer",fontSize:13,fontWeight:700,color:"#fff",background:"#0f172a",boxShadow:"0 2px 6px rgba(0,0,0,.15)"}}>✅ 完成並儲存</button>
+                </div>
+              </>;
+            })()}
+          </M>
+
+          <style>{`@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;600;700;800&display=swap');*{box-sizing:border-box}button:hover:not(:disabled){opacity:.85}input:focus{border-color:#3b82f6!important}::-webkit-scrollbar{width:5px;height:5px}::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:99px}td[title]{transition:background .1s}td[title]:hover{background:#f0f9ff!important}`}</style>
+        </div>);
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
